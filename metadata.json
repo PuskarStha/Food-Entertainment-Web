@@ -1,0 +1,6 @@
+{
+  "name": "Food and Entertainment",
+  "description": "An offline-first dual-tracker containing a CineWatchlist (for Movies/TV) and a Restaurant Diary with rating, verdicts, photo attachments, CSV import/export, and smart recommendation compilation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
