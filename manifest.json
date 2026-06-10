@@ -1,0 +1,24 @@
+{
+  "short_name": "CozyTracker",
+  "name": "Cozy Tracking Workspace",
+  "description": "An offline-first, dual tracker for your watchlists and restaurant diaries with secure offline IndexedDB persistence.",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#FAF9F6",
+  "theme_color": "#1B4332",
+  "display": "standalone",
+  "orientation": "portrait"
+}
