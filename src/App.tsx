@@ -7,7 +7,7 @@ import InstallPrompt from './components/InstallPrompt';
 import Logo from './components/Logo';
 import {
   Film, Utensils, Sparkles, User, Coffee, Tv, Edit3, Calendar,
-  Heart, BadgeCheck, FolderOpen, HardDrive, Loader2, FolderCheck, LogOut
+  Heart, BadgeCheck, FolderOpen, HardDrive, Loader2, FolderCheck, LogOut, Download, Upload
 } from 'lucide-react';
 import {
   getStoredDirectoryHandle,
@@ -177,6 +177,66 @@ export default function App() {
 
   const currentMode = localStorage.getItem('cozy-storage-mode');
   const currentFolderName = localStorage.getItem('cozy-folder-name');
+
+  const handleExportData = async () => {
+    try {
+      const watchlistData = await db.watchlist.orderBy('createdAt').toArray();
+      const restaurantData = await db.restaurants.orderBy('createdAt').toArray();
+      const exportData = { watchlist: watchlistData, restaurants: restaurantData };
+      
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'cozy-sanctuary-backup.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export data:', err);
+      alert('Failed to export data.');
+    }
+  };
+
+  const handleImportData = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        
+        if (data.watchlist && Array.isArray(data.watchlist)) {
+          await db.watchlist.clear();
+          for (const item of data.watchlist) {
+            await db.watchlist.put(item);
+          }
+        }
+        
+        if (data.restaurants && Array.isArray(data.restaurants)) {
+          await db.restaurants.clear();
+          for (const item of data.restaurants) {
+            await db.restaurants.put(item);
+          }
+        }
+        
+        const wCount = await db.watchlist.count();
+        const rCount = await db.restaurants.count();
+        setWatchlistCount(wCount);
+        setRestaurantCount(rCount);
+        alert('Data imported successfully!');
+      } catch (err) {
+        console.error('Failed to import data:', err);
+        alert('Invalid backup file.');
+      }
+    };
+    input.click();
+  };
 
   // ── STATES ─────────────────────────────────────────────────────────────────
 
@@ -402,7 +462,23 @@ export default function App() {
                       </div>
                     )}
 
-                    <div className="pt-3 border-t border-[#FAF9F6] flex justify-end">
+                    <div className="pt-3 border-t border-[#FAF9F6] flex flex-col sm:flex-row justify-between gap-3">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleExportData}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-[#FAF9F6] hover:bg-[#EFECE6] text-[#4A443F] border border-[#EFECE6] rounded-xl text-[10.5px] font-bold transition cursor-pointer"
+                        >
+                          <Download size={12} />
+                          Backup
+                        </button>
+                        <button
+                          onClick={handleImportData}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-[#FAF9F6] hover:bg-[#EFECE6] text-[#4A443F] border border-[#EFECE6] rounded-xl text-[10.5px] font-bold transition cursor-pointer"
+                        >
+                          <Upload size={12} />
+                          Restore
+                        </button>
+                      </div>
                       <button
                         onClick={handleChangeStorage}
                         className="flex items-center gap-1.5 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-[10.5px] font-bold transition cursor-pointer"
