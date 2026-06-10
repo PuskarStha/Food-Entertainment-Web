@@ -9,21 +9,30 @@ import {
 } from 'lucide-react';
 
 const GENRES = [
-  "Animation",
-  "Anime",
-  "Slice of life",
-  "Drama",
-  "Comedy",
-  "Romance",
-  "Documentary",
-  "Food",
   "Action",
   "Adventure",
+  "Animation",
+  "Anime",
+  "Biography",
+  "Comedy",
+  "Crime",
+  "Documentary",
+  "Drama",
+  "Family",
   "Fantasy",
-  "Thriller",
-  "Mystery",
-  "Sci-Fi",
+  "Food",
+  "History",
   "Horror",
+  "Musical",
+  "Mystery",
+  "Romance",
+  "Sci-Fi",
+  "Slice of life",
+  "Sports",
+  "Superhero",
+  "Thriller",
+  "War",
+  "Western",
   "Other"
 ];
 
@@ -57,7 +66,7 @@ interface WatchlistModuleProps {
 
 export default function WatchlistModule({ username, activeType }: WatchlistModuleProps) {
   const [items, setItems] = useState<WatchlistItem[]>([]);
-  const [activeFilter, setActiveFilter] = useState<'All' | 'Watched' | 'Unwatched'>('All');
+  const [activeFilter, setActiveFilter] = useState<'All' | 'Watched' | 'Not Watched'>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Form states
@@ -84,20 +93,21 @@ export default function WatchlistModule({ username, activeType }: WatchlistModul
 
   // Review dialog states
   const [reviewingItem, setReviewingItem] = useState<WatchlistItem | null>(null);
-  const [rating, setRating] = useState<number>(5);
+  const [rating, setRating] = useState<number>(0);
   const [verdict, setVerdict] = useState<string>('Must Watch');
   const [review, setReview] = useState('');
 
-  // Warning state on toggle back to Unwatched
+  // Warning state on toggle back to Not Watched
   const [warningItem, setWarningItem] = useState<WatchlistItem | null>(null);
+
+  // Deletion confirmation modal state
+  const [deletingItem, setDeletingItem] = useState<WatchlistItem | null>(null);
 
   // Sharing states
   const [sharingItem, setSharingItem] = useState<WatchlistItem | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [sharingProgress, setSharingProgress] = useState(false);
 
-  // File Reference for CSV
-  const fileInputRef = useRef<HTMLInputElement>(null);
   // File Reference for Poster Image Upload
   const posterInputRef = useRef<HTMLInputElement>(null);
 
@@ -105,7 +115,24 @@ export default function WatchlistModule({ username, activeType }: WatchlistModul
   const fetchItems = async () => {
     try {
       const data = await db.watchlist.orderBy('createdAt').reverse().toArray();
-      setItems(data);
+      
+      // Auto-migrate any legacy 'Unwatched' status in the user's IndexedDB to 'Not Watched'
+      let needsStateUpdate = false;
+      const migratedData = await Promise.all(
+        data.map(async (item) => {
+          if ((item.status as any) === 'Unwatched') {
+            needsStateUpdate = true;
+            const updatedItem = { ...item, status: 'Not Watched' as const };
+            if (item.id) {
+              await db.watchlist.put(updatedItem);
+            }
+            return updatedItem;
+          }
+          return item;
+        })
+      );
+
+      setItems(migratedData);
     } catch (err) {
       console.error('Failed to load watchlist:', err);
     }
@@ -174,7 +201,7 @@ export default function WatchlistModule({ username, activeType }: WatchlistModul
         releaseYear: releaseYear !== '' ? Number(releaseYear) : undefined,
         genre: selectedGenres.join(', ') || 'Other',
         country: country || 'Other',
-        status: 'Unwatched',
+        status: 'Not Watched',
         createdAt: Date.now(),
         director: director.trim() || undefined,
         actors: actors.trim() || undefined,
@@ -199,37 +226,45 @@ export default function WatchlistModule({ username, activeType }: WatchlistModul
     }
   };
 
-  // Delete item
-  const handleDeleteItem = async (id?: number) => {
-    if (!id) return;
-    if (confirm('Are you absolutely sure you want to remove this item from your watchlist?')) {
-      await db.watchlist.delete(id);
+  // Delete item - trigger confirmation modal
+  const handleDeleteItem = (item: WatchlistItem) => {
+    setDeletingItem(item);
+  };
+
+  // Perform actual deletion
+  const confirmDeleteItem = async () => {
+    if (!deletingItem || !deletingItem.id) return;
+    try {
+      await db.watchlist.delete(deletingItem.id);
+      setDeletingItem(null);
       fetchItems();
+    } catch (err) {
+      console.error('Error deleting item:', err);
     }
   };
 
   // Toggle or open watched flow
   const handleToggleStatus = async (item: WatchlistItem) => {
-    if (item.status === 'Unwatched') {
+    if (item.status === 'Not Watched') {
       // Open Watched detailed flow
-      setRating(item.rating || 5);
+      setRating(item.rating || 0);
       setVerdict(item.verdict || 'Must Watch');
       setReview(item.review || '');
       setReviewingItem(item);
     } else {
-      // Warn when toggling back to Unwatched (destructive step)
+      // Warn when toggling back to Not Watched (destructive step)
       setWarningItem(item);
     }
   };
 
-  // Proceed with turning into Unwatched and clearing reviews
-  const confirmToggleToUnwatched = async () => {
+  // Proceed with turning into Not Watched and clearing reviews
+  const confirmToggleToNotWatched = async () => {
     if (!warningItem || !warningItem.id) return;
 
     try {
       const updated: WatchlistItem = {
         ...warningItem,
-        status: 'Unwatched',
+        status: 'Not Watched',
         rating: undefined,
         verdict: undefined,
         review: undefined
@@ -245,6 +280,11 @@ export default function WatchlistModule({ username, activeType }: WatchlistModul
   // Save the rating and reviews back to DB
   const handleSaveReview = async () => {
     if (!reviewingItem || !reviewingItem.id) return;
+
+    if (rating === 0) {
+      alert("Please select a star rating (1 to 5) before saving your review.");
+      return;
+    }
 
     try {
       const updated: WatchlistItem = {
@@ -280,8 +320,8 @@ export default function WatchlistModule({ username, activeType }: WatchlistModul
               className={`${
                 star <= currentRating
                   ? 'fill-amber-400 text-amber-500 opacity-100'
-                  : 'text-gray-400 opacity-40 group-hover/star:opacity-80'
-              } transition-opacity duration-150`}
+                  : 'fill-gray-200 text-gray-300 opacity-100 group-hover/star:fill-gray-300'
+              } transition-colors duration-150`}
             />
           </button>
         ))}
@@ -307,132 +347,6 @@ export default function WatchlistModule({ username, activeType }: WatchlistModul
         <span className="text-xs font-mono text-gray-500 ml-1">({rating.toFixed(1)})</span>
       </div>
     );
-  };
-
-  // CSV Export
-  const handleExportCSV = () => {
-    if (items.length === 0) {
-      alert("No data available to export.");
-      return;
-    }
-
-    try {
-      const headers = ['Title', 'Type', 'ReleaseYear', 'Genre', 'Country', 'Status', 'Rating', 'Verdict', 'Review'];
-      
-      const csvRows = [headers.join(',')];
-
-      items.forEach(item => {
-        const row = [
-          `"${(item.title || '').replace(/"/g, '""')}"`,
-          `"${(item.type || '')}"`,
-          `"${item.releaseYear || ''}"`,
-          `"${(item.genre || '').replace(/"/g, '""')}"`,
-          `"${(item.country || '').replace(/"/g, '""')}"`,
-          `"${item.status || ''}"`,
-          `"${item.rating !== undefined ? item.rating : ''}"`,
-          `"${item.verdict || ''}"`,
-          `"${(item.review || '').replace(/\r?\n|\r/g, ' ').replace(/"/g, '""')}"`
-        ];
-        csvRows.push(row.join(','));
-      });
-
-      const csvContent = csvRows.join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', 'CozyWatchlistBackup.csv');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.error('CSV export failure:', err);
-    }
-  };
-
-  // CSV Import
-  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const text = event.target?.result as string;
-        if (!text) return;
-
-        const lines = text.split('\n');
-        if (lines.length < 2) return;
-
-        // Simple CSV parser
-        const parsedItems: WatchlistItem[] = [];
-        
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-
-          // Parse considering quotes
-          const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-          const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-
-          if (parts.length >= 6) {
-            const clean = (val: string) => (val || '').trim().replace(/^"|"$/g, '').replace(/""/g, '"');
-            
-            const titleVal = clean(parts[0]);
-            const typeVal = (clean(parts[1]) === 'Series' ? 'Series' : 'Movie') as 'Movie' | 'Series';
-            const yearVal = Number(clean(parts[2])) || new Date().getFullYear();
-            const genreVal = clean(parts[3]);
-            const countryVal = clean(parts[4]);
-            const statusVal = (clean(parts[5]) === 'Watched' ? 'Watched' : 'Unwatched') as 'Watched' | 'Unwatched';
-            
-            let ratingVal: number | undefined = undefined;
-            let verdictVal: string | undefined = undefined;
-            let reviewVal: string | undefined = undefined;
-
-            if (parts.length >= 7 && parts[6]) {
-              const r = Number(clean(parts[6]));
-              if (!isNaN(r)) ratingVal = r;
-            }
-            if (parts.length >= 8 && parts[7]) {
-              verdictVal = clean(parts[7]);
-            }
-            if (parts.length >= 9 && parts[8]) {
-              reviewVal = clean(parts[8]);
-            }
-
-            if (titleVal) {
-              parsedItems.push({
-                title: titleVal,
-                type: typeVal,
-                releaseYear: yearVal,
-                genre: genreVal,
-                country: countryVal,
-                status: statusVal,
-                rating: ratingVal,
-                verdict: verdictVal,
-                review: reviewVal,
-                createdAt: Date.now() - i * 1000 // preserve creation order slightly
-              });
-            }
-          }
-        }
-
-        if (parsedItems.length > 0) {
-          if (confirm(`Do you want to import ${parsedItems.length} items from this CSV? This will merge with your active watchlist!`)) {
-            await db.watchlist.bulkAdd(parsedItems);
-            fetchItems();
-            alert('Watchlist items imported beautifully!');
-          }
-        } else {
-          alert('Could not find any valid watchlist records in this CSV.');
-        }
-      } catch (err) {
-        console.error('CSV import parsing failure:', err);
-        alert('Failed parsing CSV file. Please make sure it is formatted properly.');
-      }
-    };
-    reader.readAsText(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Share Card Flow
@@ -545,7 +459,7 @@ Shared from my Cozy Workspace ✨`;
       ? true 
       : activeFilter === 'Watched' 
         ? item.status === 'Watched' 
-        : item.status === 'Unwatched';
+        : item.status === 'Not Watched';
     
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           item.genre.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -571,41 +485,14 @@ Shared from my Cozy Workspace ✨`;
         </div>
 
         {/* Action triggers */}
-        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-          <button
-            id="csv-export-btn"
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-[#4A443F] hover:text-[#1B4332] bg-[#FAF9F6] hover:bg-[#EFECE6] rounded-xl transition-all duration-150 cursor-pointer border border-[#EFECE6]"
-            title="Download database as CSV"
-          >
-            <Download size={14} />
-            CSV Export
-          </button>
-          
-          <button
-            id="csv-import-trigger"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-[#4A443F] hover:text-[#1B4332] bg-[#FAF9F6] hover:bg-[#EFECE6] rounded-xl transition-all duration-150 cursor-pointer border border-[#EFECE6]"
-            title="Upload CSV database"
-          >
-            <Upload size={14} />
-            CSV Import
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            onChange={handleImportCSV}
-            className="hidden"
-          />
-
+        <div className="w-full md:w-auto flex justify-end">
           <button
             id="add-watchlist-item-trigger"
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-white bg-[#1B4332] hover:bg-[#153427] rounded-xl transition-all duration-150 cursor-pointer shadow-xs whitespace-nowrap"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 sm:py-2 text-xs font-medium text-white bg-[#1B4332] hover:bg-[#153427] rounded-xl transition-all duration-150 cursor-pointer shadow-xs whitespace-nowrap w-full sm:w-auto"
           >
             <Plus size={14} />
-            {activeType === 'Movie' ? 'Add Movie' : 'Add Series'}
+            <span>{activeType === 'Movie' ? 'Add Movie' : 'Add Series'}</span>
           </button>
         </div>
       </div>
@@ -649,20 +536,6 @@ Shared from my Cozy Workspace ✨`;
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Format selection */}
-                <div className="space-y-1.5">
-                  <label htmlFor="type-select" className="block text-xs font-semibold text-[#8D8880]">Format Type</label>
-                  <select
-                    id="type-select"
-                    value={type}
-                    onChange={(e) => setType(e.target.value as 'Movie' | 'Series')}
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#EFECE6] focus:border-[#1B4332] rounded-xl text-xs outline-none transition-colors duration-150 text-[#4A443F]"
-                  >
-                    <option value="Movie">Movie</option>
-                    <option value="Series">TV Series</option>
-                  </select>
-                </div>
-
                 {/* Release year */}
                 <div className="space-y-1.5">
                   <label htmlFor="year-inp" className="block text-xs font-semibold text-[#8D8880]">Release Year <span className="text-[10px] font-normal text-amber-600">(Optional)</span></label>
@@ -677,27 +550,27 @@ Shared from my Cozy Workspace ✨`;
                     className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#EFECE6] focus:border-[#1B4332] rounded-xl text-xs outline-none transition-colors duration-150 text-[#4A443F] placeholder:text-[#8D8880]/60"
                   />
                 </div>
-              </div>
 
-              {/* Dropdowns for Country */}
-              <div className="space-y-1.5">
-                <label htmlFor="country-select" className="block text-xs font-semibold text-[#8D8880]">Country</label>
-                <select
-                  id="country-select"
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#EFECE6] focus:border-[#1B4332] rounded-xl text-xs outline-none transition-colors duration-150 text-[#4A443F]"
-                >
-                  {COUNTRIES.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                {/* Dropdowns for Country */}
+                <div className="space-y-1.5">
+                  <label htmlFor="country-select" className="block text-xs font-semibold text-[#8D8880]">Country</label>
+                  <select
+                    id="country-select"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#EFECE6] focus:border-[#1B4332] rounded-xl text-xs outline-none transition-colors duration-150 text-[#4A443F]"
+                  >
+                    {COUNTRIES.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Multiselect Genres */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-[#8D8880]">Genres <span className="text-[10px] font-normal text-amber-600">(Multiselect)</span></label>
-                <div className="flex flex-wrap gap-1.5 p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl max-h-36 overflow-y-auto">
+                <div className="flex flex-wrap gap-1 p-2.5 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl max-h-32 overflow-y-auto">
                   {GENRES.map(g => {
                     const isSelected = selectedGenres.includes(g);
                     return (
@@ -711,10 +584,10 @@ Shared from my Cozy Workspace ✨`;
                             setSelectedGenres([...selectedGenres, g]);
                           }
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-2xs font-semibold border transition cursor-pointer select-none ${
+                        className={`px-2 py-0.5 rounded-md text-[10.5px] font-medium border transition-all duration-100 cursor-pointer select-none ${
                           isSelected
-                            ? 'bg-[#1B4332] text-white border-[#1B4332] shadow-xs'
-                            : 'bg-white text-[#4A443F] border-[#EFECE6] hover:bg-[#FAF9F6]'
+                            ? 'bg-[#1B4332] text-white border-[#1B4332] shadow-2xs font-semibold'
+                            : 'bg-white text-[#4A443F]/80 border-[#EFECE6] hover:bg-[#1B4332]/5 hover:text-[#1B4332] hover:border-[#1B4332]/20'
                         }`}
                       >
                         {g}
@@ -813,19 +686,19 @@ Shared from my Cozy Workspace ✨`;
       {/* Grid of Media Categories */}
       <div className="space-y-4">
         {/* Double-Tab System: Movies vs Series is replaced by our clean, lightweight header filters */}
-        <div className="flex items-center justify-between border-b border-[#EFECE6] pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#EFECE6] pb-3">
           <h2 className="text-lg font-serif font-semibold text-[#1B4332] flex items-center gap-2">
             {activeType === 'Movie' ? <Film size={18} /> : <Tv size={18} />}
             My Saved {activeType} List
           </h2>
 
           {/* Secondary Sub-Tabs: filters */}
-          <div className="flex gap-1.5 bg-[#FAF9F6] border border-[#EFECE6] p-0.5 rounded-lg text-xs leading-none">
-            {['All', 'Watched', 'Unwatched'].map((filter) => (
+          <div className="flex gap-1.5 bg-[#FAF9F6] border border-[#EFECE6] p-0.5 rounded-lg text-xs leading-none w-full sm:w-auto justify-between sm:justify-start">
+            {['All', 'Watched', 'Not Watched'].map((filter) => (
               <button
                 key={filter}
-                onClick={() => setActiveFilter(filter as 'All' | 'Watched' | 'Unwatched')}
-                className={`px-3 py-1.5 font-semibold rounded-md transition cursor-pointer ${
+                onClick={() => setActiveFilter(filter as 'All' | 'Watched' | 'Not Watched')}
+                className={`flex-1 sm:flex-none text-center px-3 py-2 sm:py-1.5 font-semibold rounded-md transition cursor-pointer ${
                   activeFilter === filter
                     ? 'bg-white text-[#1B4332] shadow-xs'
                     : 'text-[#8D8880] hover:text-[#4A443F]'
@@ -869,9 +742,23 @@ Shared from my Cozy Workspace ✨`;
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1.5">
-                        <span className="px-2 py-0.5 bg-[#1B4332]/10 text-[#1B4332] rounded-md text-[10px] uppercase font-bold tracking-wider truncate max-w-[120px]">
-                          {item.genre}
-                        </span>
+                        <div className="flex flex-wrap gap-1 items-center min-w-0">
+                          <span className="px-2 py-0.5 bg-[#1B4332]/10 text-[#1B4332] rounded-md text-[10px] uppercase font-bold tracking-wider truncate max-w-[80px]" title={item.genre}>
+                            {item.genre}
+                          </span>
+                          {item.status === 'Watched' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg font-bold text-[9px] uppercase tracking-wider shrink-0 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                              <Check size={10} className="stroke-[3.5] text-emerald-700" />
+                              Watched
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-gray-50 text-gray-500 border border-gray-200 rounded-lg font-bold text-[9px] uppercase tracking-wider shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                              Not Watched
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             onClick={() => handleOpenShare(item)}
@@ -881,7 +768,7 @@ Shared from my Cozy Workspace ✨`;
                             <Share2 size={13} />
                           </button>
                           <button
-                            onClick={() => handleDeleteItem(item.id)}
+                            onClick={() => handleDeleteItem(item)}
                             className="p-1.5 text-[#8D8880] hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                             title="Delete title"
                           >
@@ -934,7 +821,7 @@ Shared from my Cozy Workspace ✨`;
                     </div>
                   ) : (
                     <div className="mt-4 pt-4 border-t border-[#FAF9F6] flex justify-between items-center text-xs">
-                      <span className="text-[#8D8880] text-[11px]">Unwatched</span>
+                      <span className="text-[#8D8880] text-[11px]">Not Watched</span>
                       <button
                         onClick={() => handleToggleStatus(item)}
                         className="px-3 py-1 bg-[#FAF9F6] text-[#1B4332] hover:bg-[#EFECE6] border border-[#EFECE6] rounded-lg font-medium transition cursor-pointer text-xs"
@@ -981,7 +868,12 @@ Shared from my Cozy Workspace ✨`;
 
             {/* Star selector */}
             <div className="space-y-2">
-              <label className="block text-xs font-semibold text-gray-400">Your Star Rating</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-gray-400">Your Star Rating</label>
+                {rating === 0 && (
+                  <span className="text-[10px] text-amber-600 font-medium animate-pulse">Select stars to rate</span>
+                )}
+              </div>
               {renderStarsSelector(rating, setRating)}
             </div>
 
@@ -1040,7 +932,7 @@ Shared from my Cozy Workspace ✨`;
         </div>
       )}
 
-      {/* Warning dialog on setting back to Unwatched */}
+      {/* Warning dialog on setting back to Not Watched */}
       {warningItem && (
         <div className="fixed inset-0 bg-black/35 backdrop-blur-xs z-50 overflow-y-auto flex items-start justify-center p-4">
           <div className="bg-white border border-[#EFECE6] rounded-2xl w-full max-w-sm p-6 my-auto shadow-xl animate-fade-in space-y-4">
@@ -1050,7 +942,7 @@ Shared from my Cozy Workspace ✨`;
             </div>
             
             <p className="text-xs text-gray-500 leading-relaxed">
-              Toggling <strong className="text-gray-900 font-semibold">"{warningItem.title}"</strong> back to <span className="font-semibold text-[#1B4332]">Unwatched</span> will delete its star rating, quick verdict tag, and written reviews indefinitely.
+               Toggling <strong className="text-gray-900 font-semibold">"{warningItem.title}"</strong> back to <span className="font-semibold text-[#1B4332]">Not Watched</span> will delete its star rating, quick verdict tag, and written reviews indefinitely.
             </p>
 
             <p className="text-xs text-amber-700 font-semibold bg-amber-50/70 p-2.5 rounded-xl border border-amber-200">
@@ -1067,10 +959,47 @@ Shared from my Cozy Workspace ✨`;
               </button>
               <button
                 type="button"
-                onClick={confirmToggleToUnwatched}
+                onClick={confirmToggleToNotWatched}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-xs transition"
               >
                 Yes, Clear and Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Item Confirmation Modal */}
+      {deletingItem && (
+        <div className="fixed inset-0 bg-black/35 backdrop-blur-xs z-50 overflow-y-auto flex items-start justify-center p-4">
+          <div className="bg-white border border-[#EFECE6] rounded-2xl w-full max-w-sm p-6 my-auto shadow-xl animate-fade-in space-y-4 text-left">
+            <div className="flex items-center gap-3 text-red-500 pb-2 border-b border-[#FAF9F6]">
+              <Trash2 className="shrink-0 stroke-[2.5]" size={20} />
+              <h3 className="font-bold text-gray-950 text-sm">Remove from Watchlist?</h3>
+            </div>
+            
+            <p className="text-xs text-gray-500 leading-relaxed">
+              You are about to delete <strong className="text-gray-900 font-semibold">"{deletingItem.title}"</strong> {deletingItem.releaseYear ? `(${deletingItem.releaseYear})` : ''} from your personal diary workspace.
+            </p>
+
+            <p className="text-xs text-red-700 font-semibold bg-red-50/70 p-2.5 rounded-xl border border-red-200">
+              This will permanently exclude this selection and erase any associated ratings and reviews. This action cannot be reversed.
+            </p>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingItem(null)}
+                className="px-4 py-2 border border-[#EFECE6] text-gray-500 hover:bg-[#FAF9F6] rounded-xl font-medium text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteItem}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-xs transition cursor-pointer"
+              >
+                Delete Title
               </button>
             </div>
           </div>
@@ -1165,7 +1094,7 @@ Shared from my Cozy Workspace ✨`;
                     </div>
                   ) : (
                     <div className="mt-4 pt-4 border-t border-[#FAF9F6] flex justify-between items-center text-xs text-left">
-                      <span className="text-[#8D8880] text-[11px]">Unwatched</span>
+                      <span className="text-[#8D8880] text-[11px]">Not Watched</span>
                       <span className="text-[10px] font-semibold text-[#1B4332]">On CineWatchlist 🎬</span>
                     </div>
                   )}

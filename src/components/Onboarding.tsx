@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Logo from './Logo';
-import { Sparkles, ArrowRight, BookOpen } from 'lucide-react';
+import { Sparkles, ArrowRight, BookOpen, CheckSquare } from 'lucide-react';
 
 interface OnboardingProps {
   onEnter: (username: string) => void;
@@ -59,9 +59,22 @@ export default function Onboarding({ onEnter }: OnboardingProps) {
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-[#EFECE6] w-full flex items-center justify-center gap-2 text-xs text-gray-400">
-          <BookOpen id="private-badge" size={14} />
-          <span>100% Client-Side & Persistent (IndexedDB)</span>
+        <div className="mt-8 pt-6 border-t border-[#EFECE6] w-full space-y-3">
+          <div className="flex items-center justify-center gap-2 text-[10px] uppercase font-bold tracking-[0.1em] text-gray-400">
+            <BookOpen size={12} className="text-[#1B4332]/50" />
+            <span>Data Privacy & Storage</span>
+          </div>
+          <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-xl p-3 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+              <CheckSquare size={16} className="text-emerald-600" />
+            </div>
+            <div className="text-left">
+              <p className="text-[11px] font-bold text-[#4A443F]">CozyTrackerDB (IndexedDB)</p>
+              <p className="text-[10px] text-[#8D8880] leading-relaxed">
+                All logs, reviews, and images are stored locally in your browser. No cloud sync, 100% private to this device.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -50,6 +50,11 @@ export default function App() {
     return 'Evening';
   };
 
+  const getFirstName = (name: string) => {
+    if (!name) return 'Cozy Guest';
+    return name.trim().split(/\s+/)[0];
+  };
+
   useEffect(() => {
     // Initialize database seed on startup
     const initDbAndUser = async () => {
@@ -141,7 +146,7 @@ export default function App() {
             <div className="animate-fade-in-simple space-y-4">
               <div className="text-left border-b border-[#EFECE6] pb-3">
                 <h2 className="font-serif text-2xl md:text-3xl font-light text-[#1B4332] tracking-tight">
-                  Good {getGreeting()}, <span className="italic">{username}</span>
+                  Good {getGreeting()}, <span className="italic">{getFirstName(username)}</span>
                 </h2>
                 <p className="mt-1 text-xs text-[#8D8880]">
                   Track seen {activeTab === 'Movie' ? 'movie masterpieces' : 'TV series episodes'} and record cozy verdicts offline.
@@ -153,7 +158,7 @@ export default function App() {
             <div className="animate-fade-in-simple space-y-4">
               <div className="text-left border-b border-[#EFECE6] pb-3">
                 <h2 className="font-serif text-2xl md:text-3xl font-light text-[#1B4332] tracking-tight">
-                  Happy Dining, <span className="italic">{username}</span>
+                  Happy Dining, <span className="italic">{getFirstName(username)}</span>
                 </h2>
                 <p className="mt-1 text-xs text-[#8D8880]">
                   Snap culinary memories, list local bistros, and compile curated food recommendations.

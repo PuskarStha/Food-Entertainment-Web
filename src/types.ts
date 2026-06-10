@@ -5,7 +5,7 @@ export interface WatchlistItem {
   releaseYear?: number;
   genre: string;
   country: string;
-  status: 'Watched' | 'Unwatched';
+  status: 'Watched' | 'Not Watched';
   rating?: number; // 1-5 float representation
   verdict?: string; // Quick verdict tags: e.g. "Must Watch", "Decent", etc.
   review?: string; // Freeform written review

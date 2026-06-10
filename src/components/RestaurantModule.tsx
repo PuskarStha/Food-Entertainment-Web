@@ -28,7 +28,7 @@ export default function RestaurantModule({ username }: RestaurantModuleProps) {
 
   // Visited Review Dialog
   const [reviewingRest, setReviewingRest] = useState<RestaurantItem | null>(null);
-  const [rating, setRating] = useState<number>(5);
+  const [rating, setRating] = useState<number>(0);
   const [verdict, setVerdict] = useState<string>('Amazing');
   const [remarks, setRemarks] = useState('');
   const [image, setImage] = useState<string>(''); // base64 representation
@@ -36,6 +36,9 @@ export default function RestaurantModule({ username }: RestaurantModuleProps) {
 
   // Warning state on undo visited
   const [warningRest, setWarningRest] = useState<RestaurantItem | null>(null);
+
+  // Deletion confirmation modal state
+  const [deletingRest, setDeletingRest] = useState<RestaurantItem | null>(null);
 
   // Sharing states
   const [sharingRest, setSharingRest] = useState<RestaurantItem | null>(null);
@@ -134,19 +137,27 @@ export default function RestaurantModule({ username }: RestaurantModuleProps) {
     }
   };
 
-  // Delete Restaurant Spot
-  const handleDeleteRestaurant = async (id?: number) => {
-    if (!id) return;
-    if (confirm('Are you sure you want to delete this dining spot from your diary?')) {
-      await db.restaurants.delete(id);
+  // Delete Restaurant Spot - trigger confirmation modal
+  const handleDeleteRestaurant = (item: RestaurantItem) => {
+    setDeletingRest(item);
+  };
+
+  // Perform actual deletion
+  const confirmDeleteRestaurant = async () => {
+    if (!deletingRest || !deletingRest.id) return;
+    try {
+      await db.restaurants.delete(deletingRest.id);
+      setDeletingRest(null);
       fetchRestaurants();
+    } catch (err) {
+      console.error('Error deleting dining spot:', err);
     }
   };
 
   // Visited flow click
   const handleToggleVisited = (rest: RestaurantItem) => {
     if (!rest.visited) {
-      setRating(rest.rating || 5);
+      setRating(rest.rating || 0);
       setVerdict(rest.verdict || 'Amazing');
       setRemarks(rest.remarks || '');
       setImage(rest.image || '');
@@ -229,6 +240,11 @@ export default function RestaurantModule({ username }: RestaurantModuleProps) {
   const handleSaveReview = async () => {
     if (!reviewingRest || !reviewingRest.id) return;
 
+    if (rating === 0) {
+      alert("Please select a star rating (1 to 5) before saving your review.");
+      return;
+    }
+
     try {
       const updated: RestaurantItem = {
         ...reviewingRest,
@@ -264,8 +280,8 @@ export default function RestaurantModule({ username }: RestaurantModuleProps) {
               className={`${
                 star <= currentRating
                   ? 'fill-amber-400 text-amber-500 opacity-100'
-                  : 'text-gray-400 opacity-40 group-hover/star:opacity-80'
-              }`}
+                  : 'fill-gray-200 text-gray-300 opacity-100 group-hover/star:fill-gray-300'
+              } transition-colors duration-150`}
             />
           </button>
         ))}
@@ -428,7 +444,7 @@ Shared from my Cozy Workspace ✨`;
           <button
             id="add-restaurant-trigger"
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#1B4332] hover:bg-[#153427] rounded-xl transition-all duration-150 cursor-pointer shadow-xs"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 sm:py-2 text-xs font-semibold text-white bg-[#1B4332] hover:bg-[#153427] rounded-xl transition-all duration-150 cursor-pointer shadow-xs w-full sm:w-auto"
           >
             <Plus size={14} />
             Add Restaurant
@@ -564,17 +580,17 @@ Shared from my Cozy Workspace ✨`;
 
       {/* Primary classification filters list */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-[#EFECE6] pb-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#EFECE6] pb-2">
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-[#8D8880]">Dining Spots</h4>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-[#8D8880] text-left font-serif">Dining Spots</h4>
           </div>
 
-          <div className="flex gap-1.5 bg-[#FAF9F6] border border-[#EFECE6] p-0.5 rounded-lg text-xs leading-none">
+          <div className="flex gap-1.5 bg-[#FAF9F6] border border-[#EFECE6] p-0.5 rounded-lg text-xs leading-none w-full sm:w-auto justify-between sm:justify-start">
             {['All', 'Visited', 'Not Visited'].map((filter) => (
               <button
                 key={filter}
                 onClick={() => setActiveFilter(filter as 'All' | 'Visited' | 'Not Visited')}
-                className={`px-3 py-1.5 font-semibold rounded-md transition cursor-pointer ${
+                className={`flex-1 sm:flex-none text-center px-3 py-2 sm:py-1.5 font-semibold rounded-md transition cursor-pointer ${
                   activeFilter === filter
                     ? 'bg-white text-[#1B4332] shadow-xs'
                     : 'text-[#8D8880] hover:text-[#4A443F]'
@@ -632,7 +648,7 @@ Shared from my Cozy Workspace ✨`;
                           <Share2 size={13} />
                         </button>
                         <button
-                          onClick={() => handleDeleteRestaurant(item.id)}
+                          onClick={() => handleDeleteRestaurant(item)}
                           className="p-1 text-[#8D8880] hover:text-red-600 rounded-md transition"
                           title="Delete dining diary"
                         >
@@ -712,7 +728,12 @@ Shared from my Cozy Workspace ✨`;
 
             {/* Stars rating selector */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-gray-400">Rating (1 to 5 Stars)</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-gray-400">Rating (1 to 5 Stars)</label>
+                {rating === 0 && (
+                  <span className="text-[10px] text-amber-600 font-medium animate-pulse">Select stars to rate</span>
+                )}
+              </div>
               {renderStarsSelector(rating, setRating)}
             </div>
 
@@ -840,6 +861,43 @@ Shared from my Cozy Workspace ✨`;
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-xs transition"
               >
                 Yes, Clear and Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Spot Confirmation Modal */}
+      {deletingRest && (
+        <div className="fixed inset-0 bg-black/35 backdrop-blur-xs z-50 overflow-y-auto flex items-start justify-center p-4">
+          <div className="bg-white border border-[#EFECE6] rounded-2xl w-full max-w-sm p-6 my-auto shadow-xl animate-fade-in space-y-4 text-left">
+            <div className="flex items-center gap-3 text-red-500 pb-2 border-b border-[#FAF9F6]">
+              <Trash2 className="shrink-0 stroke-[2.5]" size={20} />
+              <h3 className="font-bold text-gray-950 text-sm">Delete Dining Spot?</h3>
+            </div>
+            
+            <p className="text-xs text-gray-500 leading-relaxed">
+              You are about to delete <strong className="text-gray-900 font-semibold">"{deletingRest.name}"</strong> {deletingRest.cuisine ? `(${deletingRest.cuisine})` : ''} from your culinary diary.
+            </p>
+
+            <p className="text-xs text-red-700 font-semibold bg-red-50/70 p-2.5 rounded-xl border border-red-200">
+              This will permanently exclude this selection and erase any associated ratings and reviews. This action cannot be reversed.
+            </p>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingRest(null)}
+                className="px-4 py-2 border border-[#EFECE6] text-gray-500 hover:bg-[#FAF9F6] rounded-xl font-medium text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteRestaurant}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-xs transition cursor-pointer"
+              >
+                Delete Spot
               </button>
             </div>
           </div>
